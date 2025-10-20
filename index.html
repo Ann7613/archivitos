@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parser LR(1) - Visualizador</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
+        .code-input { font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9rem; }
+        .table-container { max-height: 400px; overflow-y: auto; overflow-x: auto; }
+        th, td { padding: 8px 12px; text-align: center; border: 1px solid #e5e7eb; white-space: nowrap; }
+        th.sticky-col, td.sticky-col { 
+            position: sticky; 
+            left: 0; 
+            z-index: 10; 
+            background-color: #f9fafb; 
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-10">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-blue-800 mb-2">Generador y Parser LR(1)</h1>
+            <p class="text-gray-600 text-lg">Integración Python (LR1Analyzer) + Flask + Web.</p>
+        </header>
+
+        <main class="grid lg:grid-cols-3 gap-8">
+            <!-- Columna de Entrada -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="bg-gray-50 p-6 rounded-xl shadow-inner">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-3">1. Entrada de Datos</h2>
+                    
+                    <label for="grammarInput" class="block text-sm font-medium text-gray-700 mb-1">Gramática (Formato: A -> B C | d)</label>
+                    <textarea id="grammarInput" rows="6" class="code-input w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: E -> T + E | T&#10;T -> F * T | F&#10;F -> ( E ) | id">E -> T + E | T
+T -> F * T | F
+F -> ( E ) | id</textarea>
+                    
+                    <label for="inputString" class="block text-sm font-medium text-gray-700 mt-4 mb-1">Cadena a Analizar (Tokens separados por espacio):</label>
+                    <input type="text" id="inputString" value="id * id + id" class="code-input w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: id * id + id">
+                    
+                    <button onclick="runSimulation()" id="runButton" class="mt-6 w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition duration-200 shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50">
+                        Generar Tablas y Analizar
+                    </button>
+                    <div id="statusMessage" class="mt-4 text-center text-sm font-medium hidden"></div>
+                </div>
+
+                <div class="bg-purple-50 p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-semibold text-purple-700 mb-3">Gramática Aumentada</h2>
+                    <ul id="grammarList" class="code-input text-gray-700 space-y-1">
+                        <!-- Lista de reglas -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Columna de Salida y Tablas -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Tablas ACTION y GOTO -->
+                <div class="bg-indigo-50 p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold text-indigo-700 mb-3">2. Tablas de Análisis LR(1)</h2>
+                    
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="table-container">
+                            <h3 class="text-lg font-bold text-gray-800 mb-2">Tabla ACTION</h3>
+                            <table id="actionTable" class="w-full text-sm rounded-lg overflow-hidden"></table>
+                        </div>
+                        <div class="table-container">
+                            <h3 class="text-lg font-bold text-gray-800 mb-2">Tabla GOTO</h3>
+                            <table id="gotoTable" class="w-full text-sm rounded-lg overflow-hidden"></table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultado del Parsing -->
+                <div class="bg-green-50 p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold text-green-700 mb-3">3. Traza del Análisis Sintáctico</h2>
+                    <div id="parseStatus" class="font-bold text-xl mb-4"></div>
+                    <div class="table-container">
+                        <table id="parseTrace" class="w-full text-sm rounded-lg overflow-hidden">
+                            <thead>
+                                <tr class="bg-green-200 text-left">
+                                    <th class="sticky top-0 bg-green-200 sticky-col">Pila</th>
+                                    <th class="sticky top-0 bg-green-200">Entrada Restante</th>
+                                    <th class="sticky top-0 bg-green-200">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Traza de pasos -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Estados de la Colección Canónica -->
+                <div class="bg-yellow-50 p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold text-yellow-700 mb-3">4. Estados de la Colección Canónica</h2>
+                    <div id="statesContainer" class="space-y-4 text-sm code-input">
+                        <!-- Contenido de los estados -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5000/analyze_lr1'; // URL del servidor Flask
+
+        function setStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `mt-4 p-2 rounded-lg ${type === 'error' ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'} text-sm font-medium text-center`;
+            statusDiv.classList.remove('hidden');
+            document.getElementById('runButton').disabled = type === 'loading';
+            document.getElementById('runButton').textContent = type === 'loading' ? 'Analizando...' : 'Generar Tablas y Analizar';
+        }
+
+        function renderGrammar(grammar) {
+            const list = document.getElementById('grammarList');
+            list.innerHTML = grammar.map(rule => `<li>${rule}</li>`).join('');
+        }
+
+        function renderStates(states) {
+            const container = document.getElementById('statesContainer');
+            container.innerHTML = Object.entries(states).map(([stateName, items]) => {
+                const itemsHtml = items.map(item => `<div class="ml-4">${item}</div>`).join('');
+                return `<div class="border-b pb-2"><strong>${stateName}</strong><div class="text-gray-600">${itemsHtml}</div></div>`;
+            }).join('');
+        }
+
+        // Renderiza una tabla (ACTION o GOTO)
+        function renderTable(elementId, data, isAction) {
+            const tableBody = document.getElementById(elementId);
+            if (!tableBody) return;
+            
+            // Determinar encabezados
+            const headers = isAction 
+                ? [...data.terminals.filter(t => t !== '$'), '$'] 
+                : data.non_terminals.filter(nt => nt !== data.non_terminals[0]); // Quitar S'
+            
+            let html = '<thead class="bg-gray-200"><tr><th class="sticky top-0 bg-gray-200 sticky-col">Estado</th>';
+            headers.forEach(h => {
+                html += `<th class="sticky top-0 bg-gray-200">${h}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            for (let i = 0; i < data.num_states; i++) {
+                const rowData = isAction ? data.action_table[i] : data.goto_table[i];
+                html += '<tr>';
+                html += `<td class="font-bold bg-gray-50 sticky-col">I${i}</td>`;
+                
+                headers.forEach(symbol => {
+                    const action = rowData ? rowData[symbol] || '' : '';
+                    let style = '';
+                    if (isAction) {
+                        if (action.startsWith('s')) style = 'bg-yellow-100 font-medium';
+                        if (action.startsWith('r')) style = 'bg-red-100 font-medium';
+                        if (action === 'acc') style = 'bg-green-100 font-bold';
+                    } else if (action !== '') { // GOTO (si no está vacío)
+                        style = 'bg-blue-100 font-medium';
+                    }
+                    html += `<td class="${style}">${action}</td>`;
+                });
+                html += '</tr>';
+            }
+            html += '</tbody>';
+            tableBody.innerHTML = html;
+        }
+
+        // Renderiza la traza de parsing
+        function renderParseTrace(trace) {
+            const tbody = document.getElementById('parseTrace').querySelector('tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            trace.forEach((step, index) => {
+                let status = '';
+                if (step.action.includes('ERROR')) {
+                    status = 'bg-red-50';
+                } else if (step.action.includes('ACEPTADO')) {
+                    status = 'bg-green-100';
+                }
+
+                const actionDisplay = step.action.includes('ACEPTADO')
+                    ? `<span class="font-bold text-green-700">${step.action}</span>`
+                    : step.action.includes('ERROR')
+                    ? `<span class="font-bold text-red-700">${step.action}</span>`
+                    : step.action;
+
+                tbody.innerHTML += `
+                    <tr class="${status} hover:bg-gray-50">
+                        <td class="code-input text-left sticky-col">${step.stack}</td>
+                        <td class="code-input text-left">${step.input}</td>
+                        <td class="text-left">${actionDisplay}</td>
+                    </tr>
+                `;
+            });
+            
+            const statusDiv = document.getElementById('parseStatus');
+            const finalAction = trace[trace.length - 1]?.action || 'ERROR';
+            if (finalAction.includes('ACEPTADO')) {
+                statusDiv.className = "font-bold text-xl mb-4 text-green-800";
+                statusDiv.textContent = "¡Análisis Exitoso! (Cadena Aceptada)";
+            } else {
+                statusDiv.className = "font-bold text-xl mb-4 text-red-800";
+                statusDiv.textContent = "¡Error de Análisis! (Cadena Rechazada)";
+            }
+        }
+
+        // Función principal que llama a la API
+        async function runSimulation() {
+            const grammar = document.getElementById('grammarInput').value;
+            const input_string = document.getElementById('inputString').value;
+
+            setStatus('Conectando con el servidor Flask...', 'loading');
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ grammar, input_string })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || `Error HTTP: ${response.status}`);
+                }
+
+                // 1. Renderizar Gramática Aumentada
+                renderGrammar(data.grammar);
+
+                // 2. Renderizar Tablas
+                renderTable('actionTable', data, true);  // true para ACTION
+                renderTable('gotoTable', data, false); // false para GOTO
+                
+                // 3. Renderizar Traza
+                renderParseTrace(data.trace); 
+
+                // 4. Renderizar Estados
+                renderStates(data.states);
+                
+                setStatus(`Análisis completado en ${data.num_states} estados.`, 'info');
+
+            } catch (error) {
+                console.error("Error en la simulación:", error);
+                setStatus(`ERROR: No se pudo conectar con el servidor o el análisis falló. Asegúrate de que Flask esté corriendo en ${API_URL}. Detalles: ${error.message}`, 'error');
+            }
+        }
+
+        // Inicializar la vista al cargar
+        document.addEventListener('DOMContentLoaded', () => {
+             // Limpiar resultados al inicio, pero dejar el botón listo
+             document.getElementById('statusMessage').classList.add('hidden');
+             document.getElementById('runButton').disabled = false;
+        });
+    </script>
+</body>
+</html>
